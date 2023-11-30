@@ -5,6 +5,8 @@ import clip
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+import saliency_dataset
+
 
 from argparse import ArgumentParser
 
@@ -42,6 +44,11 @@ class LSegmentationModule(pl.LightningModule):
 
     def evaluate(self, x, target=None):
         pred = self.net.forward(x)
+        # print("in lseg_module eval")
+        print("ineval")
+        # print(pred.size())
+        # print(pred[0])
+        # exit()
         if isinstance(pred, (tuple, list)):
             pred = pred[0]
         if target is None:
@@ -64,7 +71,12 @@ class LSegmentationModule(pl.LightningModule):
     
 
     def training_step(self, batch, batch_nb):
-        img, target = batch
+        img, target, text, train_type = batch
+        print(img.size())
+        print(target.size())
+        print(text)
+        print(train_type)
+        exit()
         with amp.autocast(enabled=self.enabled):
             out = self(img)
             multi_loss = isinstance(out, tuple)
@@ -86,7 +98,9 @@ class LSegmentationModule(pl.LightningModule):
     def validation_step(self, batch, batch_nb):
         img, target = batch
         out = self(img) 
+        print("out size", out.size())
         multi_loss = isinstance(out, tuple)
+        print("multi_loss", multi_loss)
         if multi_loss:
             val_loss = self.criterion(*out, target)
         else:
@@ -192,26 +206,62 @@ class LSegmentationModule(pl.LightningModule):
         )
 
     def get_trainset(self, dset, augment=False, **kwargs):
-        print(kwargs)
-        if augment == True:
-            mode = "train_x"
+        if self.otherkwargs["mytraintype"]:
+            traintype = self.otherkwargs["mytraintype"] 
+        else
+            traintype = None
+
+        if self.otherkwargs["mysetup"] == 0:
+            print(kwargs)
+            if augment == True:
+                mode = "train_x"
+            else:
+                mode = "train"
+
+            print(mode)
+            dset = get_dataset(
+                dset,
+                root=self.data_path,
+                split="train",
+                mode=mode,
+                transform=self.train_transform,
+                **kwargs
+            )
+
+            self.num_classes = dset.num_class
+            self.train_accuracy = pl.metrics.Accuracy()
+
+            return dset
         else:
+            print("load mysetup")
             mode = "train"
+            print(mode)
+            # Example usage:
+            # Define your transform
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                # Add any additional transforms here
+            ])
 
-        print(mode)
-        dset = get_dataset(
-            dset,
-            root=self.data_path,
-            split="train",
-            mode=mode,
-            transform=self.train_transform,
-            **kwargs
-        )
+            # Instantiate the dataset with the desired output_type
+            output_type = traintype  # Replace with the type you want to filter
+            dset = SaliencyDataset(
+                csv_file='./datasets/saliency/meta_data.csv',
+                source_image_dir='./datasets/saliency/image/',
+                target_image_dir='./datasets/saliency/map/',
+                output_type=output_type,
+                image_size=520
+                transform=transform
+            )
 
-        self.num_classes = dset.num_class
-        self.train_accuracy = pl.metrics.Accuracy()
+            # Get a sample from the dataset
+            sample = set[0]
+            print(sample)
+            print(len(set))
+            return dset
 
-        return dset
+
+
 
     def get_valset(self, dset, augment=False, **kwargs):
         self.val_accuracy = pl.metrics.Accuracy()

@@ -163,6 +163,9 @@ class LSeg(BaseModel):
         else:
             text = clip.tokenize(labelset)    
         
+        print("Text in forward is: ")
+        print(text)
+
         if self.channels_last == True:
             x.contiguous(memory_format=torch.channels_last)
 
@@ -207,7 +210,7 @@ class LSeg(BaseModel):
 
 class LSegNet(LSeg):
     """Network for semantic segmentation."""
-    def __init__(self, labels, path=None, scale_factor=0.5, crop_size=480, **kwargs):
+    def __init__(self, labels, path=None, scale_factor=0.5, crop_size=520, **kwargs): # originally 480 -> 520
 
         features = kwargs["features"] if "features" in kwargs else 256
         kwargs["use_bn"] = True

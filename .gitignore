@@ -8,11 +8,13 @@ __pycache__/
 
 # Distribution / packaging
 .Python
+ADEChallengeData2016/
 build/
 develop-eggs/
 dist/
 downloads/
 eggs/
+datasets/
 .eggs/
 lib/
 lib64/

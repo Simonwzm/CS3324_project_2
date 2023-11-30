@@ -17,8 +17,8 @@ def do_training(hparams, model_constructor):
     # instantiate model
     model = model_constructor(**vars(hparams))
     # set all sorts of training parameters
-    hparams.gpus = -1
-    hparams.accelerator = "ddp"
+    hparams.gpus = 1
+    hparams.accelerator = "dp"
     hparams.benchmark = True
 
     if hparams.dry_run:
@@ -53,6 +53,20 @@ def get_default_argument_parser():
         type=int,
         default=1,
         help="number of nodes for distributed training",
+    )
+
+    parser.add_argument(
+        "--mysetup",
+        type=int,
+        default=1,
+        help="use mysetup for dataset",
+    )
+
+    parser.add_argument(
+        "--mytraintype",
+        type=int,
+        deefault=None,
+        help="specify datapoint with matched type"
     )
 
     parser.add_argument(

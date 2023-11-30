@@ -31,7 +31,8 @@ class LSegModule(LSegmentationModule):
             self.crop_size = 768
         else:
             self.base_size = 520
-            self.crop_size = 480
+            # self.crop_size = 480
+            self.crop_size = 520
 
         use_pretrained = True
         norm_mean= [0.5, 0.5, 0.5]

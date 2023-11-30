@@ -275,6 +275,7 @@ def test(args):
         model = module
 
     model = model.eval()
+    print("after model eval")
     model = model.cpu()
 
     print(model)
@@ -311,6 +312,7 @@ def test(args):
         else [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]
     )  
 
+    print("activate multieval")
     evaluator = LSeg_MultiEvalModule(
         model, num_classes, scales=scales, flip=True
     ).cuda()
@@ -323,6 +325,10 @@ def test(args):
     per_class_iou = np.zeros(testset.num_class)
     cnt = 0
     for i, (image, dst) in enumerate(tbar):
+        if i:
+            print("size check at ", i)
+            print(image)
+            print(dst)
         if args.eval:
             with torch.no_grad():
                 if False:
@@ -380,6 +386,7 @@ def test(args):
 
                     predicts = [out]
                 else:
+                    print("outeval")
                     predicts = evaluator.parallel_forward(image)
                     
                 metric.update(dst, predicts)
@@ -392,6 +399,7 @@ def test(args):
                 tbar.set_description("pixAcc: %.4f, mIoU: %.4f" % (pixAcc, mIoU))
         else:
             with torch.no_grad():
+                print("outeval2")
                 outputs = evaluator.parallel_forward(image)
                 predicts = [
                     testset.make_pred(torch.max(output, 1)[1].cpu().numpy())
