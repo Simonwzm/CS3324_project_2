@@ -18,7 +18,7 @@ class SaliencyDataset(Dataset):
         self.data_frame = pd.read_csv(csv_file, usecols=['image', 'text', 'type'])
         self.source_image_dir = source_image_dir
         self.target_image_dir = target_image_dir
-        self.image_size = image_size
+        self.image_size = image_size # should be tuple 
         self.output_type = output_type
         self.transform = transform or transforms.Compose([
                                         transforms.Resize(self.image_size),
@@ -56,7 +56,7 @@ class SaliencyDataset(Dataset):
         pre, _, _ = target_image_name.partition('_')
         pre = pre.lstrip('0')  # Remove leading zeros
 
-        if output_type==4:
+        if self.output_type==4:
             pre = pre.split('.')[0]
 
         # Get corresponding source image path and target image path

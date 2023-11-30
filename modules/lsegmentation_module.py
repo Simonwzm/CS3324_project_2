@@ -5,7 +5,7 @@ import clip
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-import saliency_dataset
+from saliency_dataset import SaliencyDataset
 
 
 from argparse import ArgumentParser
@@ -39,8 +39,8 @@ class LSegmentationModule(pl.LightningModule):
         self.enabled = False #True mixed precision will make things complicated and leading to NAN error
         self.scaler = amp.GradScaler(enabled=self.enabled)
 
-    def forward(self, x):
-        return self.net(x)
+    def forward(self, x, text):
+        return self.net(x, text)
 
     def evaluate(self, x, target=None):
         pred = self.net.forward(x)
@@ -72,23 +72,24 @@ class LSegmentationModule(pl.LightningModule):
 
     def training_step(self, batch, batch_nb):
         img, target, text, train_type = batch
+        target = target[:,0:1,:,:]
         print(img.size())
         print(target.size())
         print(text)
         print(train_type)
-        exit()
         with amp.autocast(enabled=self.enabled):
-            out = self(img)
+            out = self(img, text)
             multi_loss = isinstance(out, tuple)
             if multi_loss:
                 loss = self.criterion(*out, target)
             else:
                 loss = self.criterion(out, target)
+                # use BCE loss between out
             loss = self.scaler.scale(loss)
-        final_output = out[0] if multi_loss else out
-        train_pred, train_gt = self._filter_invalid(final_output, target)
-        if train_gt.nelement() != 0:
-            self.train_accuracy(train_pred, train_gt)
+        # final_output = out[0] if multi_loss else out
+        # train_pred, train_gt = self._filter_invalid(final_output, target)
+        # if train_gt.nelement() != 0:
+        #     self.train_accuracy(train_pred, train_gt)
         self.log("train_loss", loss)
         return loss
 
@@ -96,34 +97,39 @@ class LSegmentationModule(pl.LightningModule):
         self.log("train_acc_epoch", self.train_accuracy.compute())
 
     def validation_step(self, batch, batch_nb):
-        img, target = batch
-        out = self(img) 
+        img, target, text, output_type = batch
+        target = target[:,0:1,:,:]
+        print(img.size())
+        out = self(img, text) 
         print("out size", out.size())
         multi_loss = isinstance(out, tuple)
-        print("multi_loss", multi_loss)
+        print("multi_loss is tuple?", multi_loss)
         if multi_loss:
             val_loss = self.criterion(*out, target)
         else:
             val_loss = self.criterion(out, target)
-        final_output = out[0] if multi_loss else out
-        valid_pred, valid_gt = self._filter_invalid(final_output, target)
-        self.val_iou.update(target, final_output)
-        pixAcc, iou = self.val_iou.get()
-        self.log("val_loss_step", val_loss)
-        self.log("pix_acc_step", pixAcc)
-        self.log(
-            "val_acc_step",
-            self.val_accuracy(valid_pred, valid_gt),
-        )
-        self.log("val_iou", iou)
+        # final_output = out[0] if multi_loss else out
+        # valid_pred, valid_gt = self._filter_invalid(final_output, target)
+
+        # self.val_iou.update(target, final_output)
+        # pixAcc, iou = self.val_iou.get()
+        # self.log("val_loss_step", val_loss)
+        # self.log("pix_acc_step", pixAcc)
+        # self.log(
+        #     "val_acc_step",
+        #     self.val_accuracy(valid_pred, valid_gt),
+        # )
+        # self.log("val_iou", iou)
+        self.log("BCE Loss", val_loss)
 
     def validation_epoch_end(self, outs):
-        pixAcc, iou = self.val_iou.get()
-        self.log("val_acc_epoch", self.val_accuracy.compute())
-        self.log("val_iou_epoch", iou)
-        self.log("pix_acc_epoch", pixAcc)
+        # pixAcc, iou = self.val_iou.get()
+        # self.log("val_acc_epoch", self.val_accuracy.compute())
+        # self.log("val_iou_epoch", iou)
+        # self.log("pix_acc_epoch", pixAcc)
+        pass
 
-        self.val_iou.reset()
+        # self.val_iou.reset()
 
     def _filter_invalid(self, pred, target):
         valid = target != self.other_kwargs["ignore_index"]
@@ -206,12 +212,13 @@ class LSegmentationModule(pl.LightningModule):
         )
 
     def get_trainset(self, dset, augment=False, **kwargs):
-        if self.otherkwargs["mytraintype"]:
-            traintype = self.otherkwargs["mytraintype"] 
-        else
+        if self.other_kwargs["mytraintype"]:
+            print(self.other_kwargs["mytraintype"])
+            traintype = self.other_kwargs["mytraintype"] 
+        else:
             traintype = None
 
-        if self.otherkwargs["mysetup"] == 0:
+        if self.other_kwargs["mysetup"] == 0:
             print(kwargs)
             if augment == True:
                 mode = "train_x"
@@ -237,11 +244,6 @@ class LSegmentationModule(pl.LightningModule):
             mode = "train"
             print(mode)
             # Example usage:
-            # Define your transform
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                # Add any additional transforms here
-            ])
 
             # Instantiate the dataset with the desired output_type
             output_type = traintype  # Replace with the type you want to filter
@@ -250,14 +252,14 @@ class LSegmentationModule(pl.LightningModule):
                 source_image_dir='./datasets/saliency/image/',
                 target_image_dir='./datasets/saliency/map/',
                 output_type=output_type,
-                image_size=520
-                transform=transform
+                image_size=(520,520),
+                transform=None #use built-in
             )
-
+            self.num_classes = 2
             # Get a sample from the dataset
-            sample = set[0]
+            sample = dset[0]
             print(sample)
-            print(len(set))
+            print(len(dset))
             return dset
 
 
@@ -273,14 +275,28 @@ class LSegmentationModule(pl.LightningModule):
             mode = "val"
 
         print(mode)
-        return get_dataset(
-            dset,
-            root=self.data_path,
-            split="val",
-            mode=mode,
-            transform=self.val_transform,
-            **kwargs
-        )
+        if self.other_kwargs["mytraintype"]:
+            print(self.other_kwargs["mytraintype"])
+            traintype = self.other_kwargs["mytraintype"] 
+        else:
+            traintype = None
+        # return get_dataset(
+        #     dset,
+        #     root=self.data_path,
+        #     split="val",
+        #     mode=mode,
+        #     transform=self.val_transform,
+        #     **kwargs
+        # )
+        dset2 = SaliencyDataset(
+                csv_file='./datasets/saliency/meta_data.csv',
+                source_image_dir='./datasets/saliency/image/',
+                target_image_dir='./datasets/saliency/map/',
+                output_type=traintype,
+                image_size=(520,520),
+                transform=None #use built-in
+            )
+        return dset2
 
 
     def get_criterion(self, **kwargs):

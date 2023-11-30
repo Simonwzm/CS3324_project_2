@@ -65,7 +65,7 @@ def get_default_argument_parser():
     parser.add_argument(
         "--mytraintype",
         type=int,
-        deefault=None,
+        default=None,
         help="specify datapoint with matched type"
     )
 

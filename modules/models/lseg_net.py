@@ -159,12 +159,14 @@ class LSeg(BaseModel):
         
     def forward(self, x, labelset=''):
         if labelset == '':
-            text = self.text
+            text = self.text[0]
+
         else:
-            text = clip.tokenize(labelset)    
+            text = labelset[0] # we use here when text is not none
+            text = clip.tokenize(labelset).to(x.device)
         
-        print("Text in forward is: ")
-        print(text)
+        # print("Text in forward is: " , text)
+        print("text size ", text.size())
 
         if self.channels_last == True:
             x.contiguous(memory_format=torch.channels_last)
@@ -181,9 +183,11 @@ class LSeg(BaseModel):
         path_2 = self.scratch.refinenet2(path_3, layer_2_rn)
         path_1 = self.scratch.refinenet1(path_2, layer_1_rn)
 
-        text = text.to(x.device)
+        # text = text.to(x.device)
         self.logit_scale = self.logit_scale.to(x.device)
         text_features = self.clip_pretrained.encode_text(text)
+        # text_features = text_features.to(x.device)
+        print(text_features.size())
 
         image_features = self.scratch.head1(path_1)
 
@@ -207,6 +211,32 @@ class LSeg(BaseModel):
             
         return out
 
+class UpsampleTo520Layer(nn.Module):
+    def __init__(self):
+        super(UpsampleTo520Layer, self).__init__()
+        # Upsample to 512
+        self.upsample = nn.Upsample(size=512, mode='nearest')
+        # Convolution to adjust from 512 to 520
+        self.conv = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        x = self.upsample(x)
+        # Since we cannot get to 520 directly, we'll pad to 520
+        # Calculate padding
+        current_size = x.size(-1)
+        target_size = 520
+        total_pad = target_size - current_size
+        pad_left = total_pad // 2
+        pad_right = total_pad - pad_left
+        
+        # Pad the image
+        x = F.pad(x, (pad_left, pad_right, pad_left, pad_right), 'constant', 0)
+        # Apply convolution
+        x = self.conv(x)
+        x = self.sigmoid(x)
+        return x
+
 
 class LSegNet(LSeg):
     """Network for semantic segmentation."""
@@ -220,7 +250,8 @@ class LSegNet(LSeg):
         self.labels = labels
 
         head = nn.Sequential(
-            Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            # Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+            UpsampleTo520Layer(),
         )
 
         super().__init__(head, **kwargs)

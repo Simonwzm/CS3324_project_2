@@ -93,7 +93,8 @@ class LSegModule(LSegmentationModule):
         self.mean = norm_mean
         self.std = norm_std
 
-        self.criterion = self.get_criterion(**kwargs)
+        # self.criterion = self.get_criterion(**kwargs)
+        self.criterion = nn.BCELoss()
 
     def get_labels(self, dataset):
         labels = []
