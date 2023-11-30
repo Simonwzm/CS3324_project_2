@@ -6,7 +6,7 @@ from torchvision import transforms
 from PIL import Image
 
 class SaliencyDataset(Dataset):
-    def __init__(self, csv_file, source_image_dir, target_image_dir, output_type,image_size, transform=None):
+    def __init__(self, csv_file, source_image_dir, target_image_dir, target_fixation_dir, output_type,image_size, transform=None):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
@@ -18,6 +18,7 @@ class SaliencyDataset(Dataset):
         self.data_frame = pd.read_csv(csv_file, usecols=['image', 'text', 'type'])
         self.source_image_dir = source_image_dir
         self.target_image_dir = target_image_dir
+        self.target_fixation_dir = target_fixation_dir
         self.image_size = image_size # should be tuple 
         self.output_type = output_type
         self.transform = transform or transforms.Compose([
@@ -62,15 +63,18 @@ class SaliencyDataset(Dataset):
         # Get corresponding source image path and target image path
         source_image_path = os.path.join(self.source_image_dir, target_image_name)
         target_image_path = os.path.join(self.target_image_dir, target_image_name)
+        target_fixation_path = os.path.join(self.target_fixation_dir, target_image_name)
 
         # Load images
         source_image = Image.open(source_image_path).convert('RGB')
         target_image = Image.open(target_image_path).convert('RGB')
-        
+        target_fixation_img = Image.open(target_fixation_path)
+
         # Apply transforms if any
         if self.transform:
             source_image = self.transform(source_image)
-            target_image = self.transform(target_image)
+            target_image = self.transform(target_image)[:1,:,:]
+            target_fixation_img = self.transform(target_fixation_img)[:1,:,:]
 
         # Fetch the appropriate row
         pre_int = int(pre)
@@ -78,7 +82,7 @@ class SaliencyDataset(Dataset):
         text = row.iloc[0]['text'] if not row.empty else ""
 
         # Create datapoint
-        datapoint = (source_image, target_image, text, self.output_type)
+        datapoint = (source_image, target_image, target_fixation_img, text, self.output_type)
 
         return datapoint
 

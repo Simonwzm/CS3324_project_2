@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
 from saliency_dataset import SaliencyDataset
+import metrics.metrics as salmetrics
 
 
 from argparse import ArgumentParser
@@ -38,6 +39,8 @@ class LSegmentationModule(pl.LightningModule):
         self.other_kwargs = kwargs
         self.enabled = False #True mixed precision will make things complicated and leading to NAN error
         self.scaler = amp.GradScaler(enabled=self.enabled)
+        self.batch_eval_value = {"cc":[], "auc":[], "nss":[]}
+        
 
     def forward(self, x, text):
         return self.net(x, text)
@@ -71,8 +74,8 @@ class LSegmentationModule(pl.LightningModule):
     
 
     def training_step(self, batch, batch_nb):
-        img, target, text, train_type = batch
-        target = target[:,0:1,:,:]
+        img, target,fixation, text, train_type = batch
+        # target = target[:,0:1,:,:]
         print(img.size())
         print(target.size())
         print(text)
@@ -97,17 +100,36 @@ class LSegmentationModule(pl.LightningModule):
         self.log("train_acc_epoch", self.train_accuracy.compute())
 
     def validation_step(self, batch, batch_nb):
-        img, target, text, output_type = batch
-        target = target[:,0:1,:,:]
-        print(img.size())
+        img, target, fixation, text, output_type = batch
+        # target = target[:,0:1,:,:]
+        # print(img.size())
+        # print(target.size())
+        # print(fixation.size())
         out = self(img, text) 
-        print("out size", out.size())
+        # print("out size", out.size())
         multi_loss = isinstance(out, tuple)
-        print("multi_loss is tuple?", multi_loss)
+        # print("multi_loss is tuple?", multi_loss)
         if multi_loss:
             val_loss = self.criterion(*out, target)
         else:
             val_loss = self.criterion(out, target)
+        
+        out = out.detach().cpu()
+        target = target.detach().cpu()
+        fixation = fixation.detach().cpu()
+        cc_value = salmetrics.CC(out, target)
+        auc_value = salmetrics.auc(out, fixation)
+        nss_value = salmetrics.nss(out, fixation)
+        print("cc", cc_value)
+        print("auc", auc_value)
+        print("nss", nss_value)
+        self.log("CC", cc_value)
+        self.log("AUC", auc_value)
+        self.log("nss", nss_value)
+        self.batch_eval_value["cc"].append(cc_value)
+        self.batch_eval_value["auc"].append(auc_value)
+        self.batch_eval_value["nss"].append(nss_value)
+
         # final_output = out[0] if multi_loss else out
         # valid_pred, valid_gt = self._filter_invalid(final_output, target)
 
@@ -127,9 +149,23 @@ class LSegmentationModule(pl.LightningModule):
         # self.log("val_acc_epoch", self.val_accuracy.compute())
         # self.log("val_iou_epoch", iou)
         # self.log("pix_acc_epoch", pixAcc)
-        pass
+        
+        # calculate average 
+        cc_avg = sum(self.batch_eval_value["cc"]) / len(self.batch_eval_value["cc"])
+        auc_avg = sum(self.batch_eval_value["auc"]) / len(self.batch_eval_value["auc"])
+        nss_avg = sum(self.batch_eval_value["nss"]) / len(self.batch_eval_value["nss"])
+        self.log("CC_epoch", cc_avg)
+        self.log("AUC_epoch", auc_avg)
+        self.log("nss_epoch", nss_avg)
 
-        # self.val_iou.reset()
+        print("cc_avg", cc_avg)
+        print("auc_avg", auc_avg)
+        print("nss_avg", nss_avg)
+
+        # clear batch_eval_value
+        self.batch_eval_value = {"cc":[], "auc":[], "nss":[]}
+
+
 
     def _filter_invalid(self, pred, target):
         valid = target != self.other_kwargs["ignore_index"]
@@ -219,7 +255,7 @@ class LSegmentationModule(pl.LightningModule):
             traintype = None
 
         if self.other_kwargs["mysetup"] == 0:
-            print(kwargs)
+            # print(kwargs)
             if augment == True:
                 mode = "train_x"
             else:
@@ -251,6 +287,7 @@ class LSegmentationModule(pl.LightningModule):
                 csv_file='./datasets/saliency/meta_data.csv',
                 source_image_dir='./datasets/saliency/image/',
                 target_image_dir='./datasets/saliency/map/',
+                target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=output_type,
                 image_size=(520,520),
                 transform=None #use built-in
@@ -258,8 +295,8 @@ class LSegmentationModule(pl.LightningModule):
             self.num_classes = 2
             # Get a sample from the dataset
             sample = dset[0]
-            print(sample)
-            print(len(dset))
+            # print(sample)
+            # print(len(dset))
             return dset
 
 
@@ -292,6 +329,7 @@ class LSegmentationModule(pl.LightningModule):
                 csv_file='./datasets/saliency/meta_data.csv',
                 source_image_dir='./datasets/saliency/image/',
                 target_image_dir='./datasets/saliency/map/',
+                target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=traintype,
                 image_size=(520,520),
                 transform=None #use built-in
