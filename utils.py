@@ -113,12 +113,21 @@ def make_checkpoint_callbacks(exp_name, version, base_path="checkpoints", freque
         save_last=True,
         verbose=True,
     )
+    # base_callback = pl.callbacks.ModelCheckpoint(
+    #     monitor="train_loss",
+    #     dirpath=f"{base_path}/{exp_name}/version_{version}/checkpoints/",
+    #     filename="train-{epoch}-{train_loss:.2f}",
+    #     mode="min",  # Assuming lower training loss is better
+    #     save_top_k=3,
+    #     verbose=True,
+    #     save_last=True
+    # )
 
     val_callback = pl.callbacks.ModelCheckpoint(
-        monitor="val_acc_epoch",
+        monitor="BCE_Loss",
         dirpath=f"{base_path}/{exp_name}/version_{version}/checkpoints/",
-        filename="result-{epoch}-{val_acc_epoch:.2f}",
-        mode="max",
+        filename="val-{epoch}-{BCE Loss:.2f}",
+        mode="min",  # Assuming lower BCE Loss is better
         save_top_k=3,
         verbose=True,
     )

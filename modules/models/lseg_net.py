@@ -157,16 +157,24 @@ class LSeg(BaseModel):
 
         self.text = clip.tokenize(self.labels)    
         
-    def forward(self, x, labelset=''):
+    def forward(self, x, labelset='',traintype="0"):
         if labelset == '':
             text = self.text[0]
 
         else:
             text = labelset[0] # we use here when text is not none
+            if traintype == 0:
+                text = text
+            if traintype == 1:
+                text = "Exist both salient and non salient objects, which is "+text
+            if traintype == 2:
+                text = "A Non-salient object which is "+text
+            if traintype == 3:
+                text = "A salient object which is " + text
             text = clip.tokenize(labelset).to(x.device)
         
         # print("Text in forward is: " , text)
-        print("text size ", text.size())
+        # print("text size ", text.size())
 
         if self.channels_last == True:
             x.contiguous(memory_format=torch.channels_last)
@@ -187,7 +195,7 @@ class LSeg(BaseModel):
         self.logit_scale = self.logit_scale.to(x.device)
         text_features = self.clip_pretrained.encode_text(text)
         # text_features = text_features.to(x.device)
-        print(text_features.size())
+        # print(text_features.size())
 
         image_features = self.scratch.head1(path_1)
 
@@ -211,32 +219,73 @@ class LSeg(BaseModel):
             
         return out
 
-class UpsampleTo520Layer(nn.Module):
-    def __init__(self):
-        super(UpsampleTo520Layer, self).__init__()
-        # Upsample to 512
-        self.upsample = nn.Upsample(size=512, mode='nearest')
-        # Convolution to adjust from 512 to 520
-        self.conv = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
-        self.sigmoid = nn.Sigmoid()
+class LearnableGaussianSmoothing(nn.Module):
+    def __init__(self, channels, kernel_size, sigma):
+        super(LearnableGaussianSmoothing, self).__init__()
+        if kernel_size % 2 == 0:
+            raise ValueError("Kernel size must be odd")
+        
+        self.kernel_size = kernel_size
+        self.sigma = sigma
+        self.channels = channels
+
+        # Create a x, y coordinate grid of shape (kernel_size, kernel_size, 2)
+        x_cord = torch.arange(self.kernel_size)
+        x_grid = x_cord.repeat(self.kernel_size).view(self.kernel_size, self.kernel_size)
+        y_grid = x_grid.t()
+        xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
+
+        mean = (self.kernel_size - 1) // 2
+        variance = sigma**2
+
+        # Calculate the 2-dimensional gaussian kernel
+        gaussian_kernel = (1./(2.*np.pi*variance)) * \
+                          torch.exp(
+                              -torch.sum((xy_grid - mean)**2., dim=-1) / \
+                              (2*variance)
+                          )
+        # Normalize the gaussian kernel so that the sum of all its elements equals 1
+        gaussian_kernel = gaussian_kernel / torch.sum(gaussian_kernel)
+
+        # Reshape to 2d depthwise convolutional weight
+        gaussian_kernel = gaussian_kernel.view(1, 1, self.kernel_size, self.kernel_size)
+        gaussian_kernel = gaussian_kernel.repeat(self.channels, 1, 1, 1)
+
+        self.gaussian_kernel = nn.Parameter(gaussian_kernel, requires_grad=True)
 
     def forward(self, x):
-        x = self.upsample(x)
-        # Since we cannot get to 520 directly, we'll pad to 520
-        # Calculate padding
-        current_size = x.size(-1)
-        target_size = 520
-        total_pad = target_size - current_size
-        pad_left = total_pad // 2
-        pad_right = total_pad - pad_left
-        
-        # Pad the image
-        x = F.pad(x, (pad_left, pad_right, pad_left, pad_right), 'constant', 0)
-        # Apply convolution
-        x = self.conv(x)
-        x = self.sigmoid(x)
+        padding = self.kernel_size // 2
+        x = F.conv2d(x, self.gaussian_kernel, stride=1, padding=padding, groups=self.channels)
         return x
 
+class UpsampleTo520Layer(nn.Module):
+    def __init__(self, initial_threshold=0.5):
+        super(UpsampleTo520Layer, self).__init__()
+        # Convolution to refine the features at 256x256
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
+        self.relu = nn.ReLU()
+        # self.conv2 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
+        # self.relu = nn.ReLU()
+        # Upsample to 520x520 using bilinear interpolation
+        self.upsample = nn.Upsample(size=(520, 520), mode='bilinear', align_corners=False)
+        # Convolution to refine the features at 520x520
+        self.conv3 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
+        # Tanh for image data normalization
+        self.sigmoid = nn.Sigmoid()
+        self.gaussian = LearnableGaussianSmoothing(1, 5, 1)
+        self.threshold = nn.Parameter(torch.tensor([initial_threshold]))
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.relu(x)
+        # x= self.conv2(x)
+        # x = self.relu(x)
+        x = self.upsample(x)
+        x = self.conv3(x)
+        x = self.gaussian(x)
+        x = self.sigmoid(x)
+        x_bin = (x>self.threshold).int()
+        return (x, x_bin)
 
 class LSegNet(LSeg):
     """Network for semantic segmentation."""

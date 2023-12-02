@@ -12,6 +12,7 @@ ADEChallengeData2016/
 build/
 develop-eggs/
 dist/
+vis/
 downloads/
 eggs/
 datasets/

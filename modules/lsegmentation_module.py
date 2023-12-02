@@ -7,6 +7,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from saliency_dataset import SaliencyDataset
 import metrics.metrics as salmetrics
+from torchvision.transforms import ToPILImage
 
 
 from argparse import ArgumentParser
@@ -39,11 +40,13 @@ class LSegmentationModule(pl.LightningModule):
         self.other_kwargs = kwargs
         self.enabled = False #True mixed precision will make things complicated and leading to NAN error
         self.scaler = amp.GradScaler(enabled=self.enabled)
-        self.batch_eval_value = {"cc":[], "auc":[], "nss":[]}
+        self.batch_eval_value = {"cc":[], "auc":[], "nss":[], "BCE_Loss": []}
+        self.store_out = []
+        self.to_pil_image = ToPILImage()
         
 
-    def forward(self, x, text):
-        return self.net(x, text)
+    def forward(self, x, text, train_type):
+        return self.net(x, text, train_type)
 
     def evaluate(self, x, target=None):
         pred = self.net.forward(x)
@@ -76,28 +79,33 @@ class LSegmentationModule(pl.LightningModule):
     def training_step(self, batch, batch_nb):
         img, target,fixation, text, train_type = batch
         # target = target[:,0:1,:,:]
-        print(img.size())
-        print(target.size())
-        print(text)
-        print(train_type)
+        # print(img.size())
+        # print(target.size())
+        # print(text)
+        # print(train_type)
+        print(fixation.size())
         with amp.autocast(enabled=self.enabled):
-            out = self(img, text)
-            multi_loss = isinstance(out, tuple)
-            if multi_loss:
-                loss = self.criterion(*out, target)
-            else:
-                loss = self.criterion(out, target)
+            out, out_bin = self(img, text, train_type)
+            
+            print(out_bin.size())
+            if target:
+                prob_loss = self.criterion(out, target)
+            if fixation:
+                bin_loss = self.criterion(out_bin, fixation)
                 # use BCE loss between out
-            loss = self.scaler.scale(loss)
+            loss = self.scaler.scale(prob_loss) + self.scaler.scale(bin_loss)
+        self.log("train_loss", prob_loss)
         # final_output = out[0] if multi_loss else out
         # train_pred, train_gt = self._filter_invalid(final_output, target)
         # if train_gt.nelement() != 0:
         #     self.train_accuracy(train_pred, train_gt)
-        self.log("train_loss", loss)
+        self.log("bin_trainloss", bin_loss)
+        self.log("all_loss", loss)
         return loss
 
     def training_epoch_end(self, outs):
-        self.log("train_acc_epoch", self.train_accuracy.compute())
+        # self.log("train_acc_epoch", self.train_accuracy.compute())
+        pass
 
     def validation_step(self, batch, batch_nb):
         img, target, fixation, text, output_type = batch
@@ -105,30 +113,37 @@ class LSegmentationModule(pl.LightningModule):
         # print(img.size())
         # print(target.size())
         # print(fixation.size())
-        out = self(img, text) 
+        out , out_bin= self(img, text,output_type) 
         # print("out size", out.size())
-        multi_loss = isinstance(out, tuple)
-        # print("multi_loss is tuple?", multi_loss)
-        if multi_loss:
-            val_loss = self.criterion(*out, target)
-        else:
+        # multi_loss = isinstance(out, tuple)
+        # # print("multi_loss is tuple?", multi_loss)
+        # if multi_loss:
+        #     val_loss = self.criterion(*out, target)
+        # else:
+        if target:
             val_loss = self.criterion(out, target)
+        if fixation:
+            bin_loss = self.criterion(out, fixation)
+        
         
         out = out.detach().cpu()
+        out_bin = out_bin.detach().cpu()
         target = target.detach().cpu()
         fixation = fixation.detach().cpu()
         cc_value = salmetrics.CC(out, target)
         auc_value = salmetrics.auc(out, fixation)
         nss_value = salmetrics.nss(out, fixation)
-        print("cc", cc_value)
-        print("auc", auc_value)
-        print("nss", nss_value)
-        self.log("CC", cc_value)
-        self.log("AUC", auc_value)
-        self.log("nss", nss_value)
+        # print("cc", cc_value)
+        # print("auc", auc_value)
+        # print("nss", nss_value)
+        # self.log("CC", cc_value)
+        # self.log("AUC", auc_value)
+        # self.log("nss", nss_value)
         self.batch_eval_value["cc"].append(cc_value)
         self.batch_eval_value["auc"].append(auc_value)
         self.batch_eval_value["nss"].append(nss_value)
+        self.batch_eval_value["BCE_Loss"].append(val_loss)
+        self.store_out.append((out, target, out_bin, fixation))
 
         # final_output = out[0] if multi_loss else out
         # valid_pred, valid_gt = self._filter_invalid(final_output, target)
@@ -142,7 +157,7 @@ class LSegmentationModule(pl.LightningModule):
         #     self.val_accuracy(valid_pred, valid_gt),
         # )
         # self.log("val_iou", iou)
-        self.log("BCE Loss", val_loss)
+        # self.log("BCE_Loss", val_loss)
 
     def validation_epoch_end(self, outs):
         # pixAcc, iou = self.val_iou.get()
@@ -154,16 +169,39 @@ class LSegmentationModule(pl.LightningModule):
         cc_avg = sum(self.batch_eval_value["cc"]) / len(self.batch_eval_value["cc"])
         auc_avg = sum(self.batch_eval_value["auc"]) / len(self.batch_eval_value["auc"])
         nss_avg = sum(self.batch_eval_value["nss"]) / len(self.batch_eval_value["nss"])
+        val_loss_avg = sum(self.batch_eval_value["BCE_Loss"]) / len(self.batch_eval_value["BCE_Loss"])
         self.log("CC_epoch", cc_avg)
         self.log("AUC_epoch", auc_avg)
         self.log("nss_epoch", nss_avg)
+        self.log("BCE_Loss", val_loss_avg)
 
         print("cc_avg", cc_avg)
         print("auc_avg", auc_avg)
         print("nss_avg", nss_avg)
+        print("BCE_Loss_avg", val_loss_avg)
 
         # clear batch_eval_value
-        self.batch_eval_value = {"cc":[], "auc":[], "nss":[]}
+        self.batch_eval_value = {"cc":[], "auc":[], "nss":[], "BCE_Loss": []}
+
+        # save outputs in self.store_out to image
+        for i in range(0, len(self.store_out), 50):
+
+            out, target, bin_out, fixation = self.store_out[i]
+            print("bin_out_size: ",bin_out.size())
+            print("fixation_size: ", fixation.size())
+            
+            res = self.to_pil_image(out[0])
+            target_res = self.to_pil_image(target[0])
+            bin_out = self.to_pil_image(bin_out[0])
+            fixation = self.to_pil_image(fixation[0])
+            res.save(f'./vis/res/val_out{i}.png')
+            target_res.save(f'./vis/tar_res/val_tar{i}.png')
+            bin_out.save(f'./vis/bin_res/val_bin_out{i}.png')
+            fixation.save(f'./vis/tar_fixa/val_tar_fixa{i}.png')
+
+        self.store_out = []
+            
+
 
 
 
@@ -290,7 +328,8 @@ class LSegmentationModule(pl.LightningModule):
                 target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=output_type,
                 image_size=(520,520),
-                transform=None #use built-in
+                transform=None, #use built-in
+                split="train"
             )
             self.num_classes = 2
             # Get a sample from the dataset
@@ -332,7 +371,8 @@ class LSegmentationModule(pl.LightningModule):
                 target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=traintype,
                 image_size=(520,520),
-                transform=None #use built-in
+                transform=None, #use built-in
+                split = "val"
             )
         return dset2
 
