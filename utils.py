@@ -11,6 +11,7 @@ import cv2
 import random
 import math
 from torchvision import transforms
+os.environ["WANDB__SERVICE_WAIT"] = "30000"
 
 
 def do_training(hparams, model_constructor):
