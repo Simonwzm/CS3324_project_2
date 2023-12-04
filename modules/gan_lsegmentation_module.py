@@ -23,8 +23,8 @@ class GAN_LSegmentationModule(pl.LightningModule):
         super().__init__()
 
         self.automatic_optimization = False
-        self.base_size = 520
-        self.crop_size = 520
+        self.base_size = 512
+        self.crop_size = 512
 
         self.G = GAN_Lseg(
             labels=None,
@@ -357,7 +357,7 @@ class GAN_LSegmentationModule(pl.LightningModule):
                 target_image_dir='./datasets/saliency/map/',
                 target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=output_type,
-                image_size=(520,520),
+                image_size=(512,512),
                 transform=None, #use built-in
                 split="train"
             )
@@ -386,7 +386,7 @@ class GAN_LSegmentationModule(pl.LightningModule):
                 target_image_dir='./datasets/saliency/map/',
                 target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=traintype,
-                image_size=(520,520),
+                image_size=(512,512),
                 transform=None, #use built-in
                 split = "val"
             )

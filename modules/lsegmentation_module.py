@@ -232,7 +232,7 @@ class LSegmentationModule(pl.LightningModule):
                 target_image_dir='./datasets/saliency/map/',
                 target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=output_type,
-                image_size=(520,520),
+                image_size=(512,512),
                 transform=None, #use built-in
                 split="train"
             )
@@ -275,7 +275,7 @@ class LSegmentationModule(pl.LightningModule):
                 target_image_dir='./datasets/saliency/map/',
                 target_fixation_dir='./datasets/saliency/fixation/',
                 output_type=traintype,
-                image_size=(520,520),
+                image_size=(512,512),
                 transform=None, #use built-in
                 split = "val"
             )

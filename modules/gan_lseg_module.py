@@ -21,8 +21,8 @@ class GAN_LSegModule(GAN_LSegmentationModule):
             data_path, dataset, batch_size, base_lr, max_epochs, **kwargs
         )
 
-        self.base_size = 520
-        self.crop_size = 520
+        self.base_size = 512
+        self.crop_size = 512
 
         use_pretrained = True
         norm_mean= [0.5, 0.5, 0.5]

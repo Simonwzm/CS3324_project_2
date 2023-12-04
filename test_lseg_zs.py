@@ -37,7 +37,7 @@ class Options:
             "--workers", type=int, default=16, metavar="N", help="dataloader threads"
         )
         parser.add_argument(
-            "--base-size", type=int, default=520, help="base image size"
+            "--base-size", type=int, default=512, help="base image size"
         )
         parser.add_argument(
             "--crop-size", type=int, default=480, help="crop image size"

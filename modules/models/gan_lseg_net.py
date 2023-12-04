@@ -303,17 +303,17 @@ class LearnableGaussianSmoothing(nn.Module):
         x = F.conv2d(x, self.gaussian_kernel, stride=1, padding=padding, groups=self.channels)
         return x
 
-class UpsampleTo520Layer(nn.Module):
+class UpsampleTo512Layer(nn.Module):
     def __init__(self, initial_threshold=0.5):
-        super(UpsampleTo520Layer, self).__init__()
+        super(UpsampleTo512Layer, self).__init__()
         # Convolution to refine the features at 256x256
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
         self.relu = nn.ReLU()
         # self.conv2 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
         # self.relu = nn.ReLU()
-        # Upsample to 520x520 using bilinear interpolation
-        self.upsample = nn.Upsample(size=(520, 520), mode='bilinear', align_corners=False)
-        # Convolution to refine the features at 520x520
+        # Upsample to 512x512 using bilinear interpolation
+        self.upsample = nn.Upsample(size=(512, 512), mode='bilinear', align_corners=False)
+        # Convolution to refine the features at 512x512
         self.conv3 = nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1)
         # Tanh for image data normalization
         self.sigmoid = nn.Sigmoid()
@@ -334,7 +334,7 @@ class UpsampleTo520Layer(nn.Module):
 
 class LSegNet(LSeg):
     """Network for semantic segmentation."""
-    def __init__(self, labels, path=None, scale_factor=0.5, crop_size=520, as_encoder=False, **kwargs): # originally 480 -> 520
+    def __init__(self, labels, path=None, scale_factor=0.5, crop_size=512, as_encoder=False, **kwargs): # originally 480 -> 512
 
         features = kwargs["features"] if "features" in kwargs else 256
         kwargs["use_bn"] = True
@@ -346,7 +346,7 @@ class LSegNet(LSeg):
         if not as_encoder:
             head = nn.Sequential(
                 # Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
-                UpsampleTo520Layer(),
+                UpsampleTo512Layer(),
             )
         else:
             head = None
@@ -393,9 +393,9 @@ def make_encoder():
 #     return nn.Sequential(*layers)
 
 class GAN_Lseg(nn.Module):
-    def __init__(self, labels, path=None, scale_factor=0.5, crop_size=520, as_encoder=False, **kwargs):
+    def __init__(self, labels, path=None, scale_factor=0.5, crop_size=512, as_encoder=False, **kwargs):
         super().__init__()
-        self.input_layer = LSegNet(labels, path=None, scale_factor=0.5, crop_size=520, as_encoder=False, **kwargs)
+        self.input_layer = LSegNet(labels, path=None, scale_factor=0.5, crop_size=512, as_encoder=False, **kwargs)
         self.encoder = make_encoder()
         self.labels=None
 
@@ -422,8 +422,8 @@ class GAN_Lseg(nn.Module):
             nn.Conv2d(64, 64, 3, padding=1), nn.ReLU(), 
         # Tanh for image data normalization
             nn.Conv2d(64, 1, 1, padding=0), #, nn.Sigmoid()
-            nn.Upsample(size=(520, 520), mode='bilinear', align_corners=False),
-        # Convolution to refine the features at 520x520
+            nn.Upsample(size=(512, 512), mode='bilinear', align_corners=False),
+        # Convolution to refine the features at 512x512
             nn.Conv2d(in_channels=1, out_channels=1, kernel_size=3, padding=1),
             LearnableGaussianSmoothing(1, 5, 1)
         )

@@ -90,7 +90,7 @@ class DatasetFSS(Dataset):
         query_name = self.img_metadata[idx]
         class_sample = self.categories.index(query_name.split('/')[-2])
         if self.split == 'val':
-            class_sample += 520
+            class_sample += 512
         elif self.split == 'test':
             class_sample += 760
 
@@ -117,9 +117,9 @@ class DatasetFSS(Dataset):
 
     def build_class_ids(self):
         if self.split == 'trn':
-            class_ids = range(0, 520)
+            class_ids = range(0, 512)
         elif self.split == 'val':
-            class_ids = range(520, 760)
+            class_ids = range(512, 760)
         elif self.split == 'test':
             class_ids = range(760, 1000)
         return class_ids

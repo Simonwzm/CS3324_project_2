@@ -57,7 +57,7 @@ class Options:
             "--workers", type=int, default=16, metavar="N", help="dataloader threads"
         )
         parser.add_argument(
-            "--base-size", type=int, default=520, help="base image size"
+            "--base-size", type=int, default=512, help="base image size"
         )
         parser.add_argument(
             "--crop-size", type=int, default=480, help="crop image size"
@@ -339,7 +339,7 @@ def test(args):
 
                     H, W = image[0].shape[1], image[0].shape[2]
                     for scale in scales:
-                        long_size = int(math.ceil(520 * scale))
+                        long_size = int(math.ceil(512 * scale))
                         if H > W:
                             height = long_size
                             width = int(1.0 * W * long_size / H + 0.5)
